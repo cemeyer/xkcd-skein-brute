@@ -8,3 +8,21 @@ input string to the given bitstring.
 An ideal solver would be an implementation of the inverse skein function. Hah.
 
 See main.c.
+
+Skein block performance:
+
+With GCC -O3 on this Core i7 machine, the C implementation yields:
+    Trial 0 Skeins/sec: 667672.35
+    Trial 1 Skeins/sec: 677591.17
+    Trial 2 Skeins/sec: 693625.83
+    Trial 3 Skeins/sec: 703415.01
+    Trial 4 Skeins/sec: 660963.22
+
+With the assembly implementation:
+    Trial 0 Skeins/sec: 933069.85
+    Trial 1 Skeins/sec: 1338020.03
+    Trial 2 Skeins/sec: 996060.88
+    Trial 3 Skeins/sec: 1022662.78
+    Trial 4 Skeins/sec: 1141148.95
+
+So I'm going to try and use that next...

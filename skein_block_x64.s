@@ -21,6 +21,7 @@ _USE_ASM_         = _MASK_ALL_
 _USE_ASM_         = SKEIN_USE_ASM
 .endif
 #################
+SKEIN_LOOP = 0
 .ifndef SKEIN_LOOP                          #configure loop unrolling
 _SKEIN_LOOP       =   2                     #default is fully unrolled for 256/512, twice for 1024
 .else

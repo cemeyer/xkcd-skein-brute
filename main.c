@@ -195,6 +195,27 @@ unsigned rbestdist = 2000;
 char beststring[128] = { 0 };
 pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
 
+void
+init_random(char initvalue[128], unsigned *len_out)
+{
+	size_t rd;
+	FILE *f = fopen("/dev/urandom", "rb");
+	const char *cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	    "abcdefghijklmnopqrstuvwxyz";
+	uint64_t rnd;
+
+	rd = fread(&rnd, sizeof rnd, 1, f);
+	ASSERT(rd == 1);
+	fclose(f);
+
+	unsigned clen = strlen(cs);
+	for (unsigned i = 0; rnd > 0; i++) {
+		initvalue[i] = cs[ rnd % clen ];
+		rnd /= clen;
+		*len_out += 1;
+	}
+}
+
 void *
 make_hash_sexy_time(void *v)
 {
@@ -205,6 +226,7 @@ make_hash_sexy_time(void *v)
 	unsigned last_best = 4000;
 	bool overflow;
 	unsigned len = strlen(initstr);
+	uint64_t nhashes = 0;
 
 	memcpy(loc_target_hash, target_bytes, sizeof(target_bytes));
 
@@ -233,6 +255,17 @@ make_hash_sexy_time(void *v)
 			}
 		}
 
+		nhashes++;
+		if (nhashes > 4000000ULL) {
+			init_random(string, &len);
+			str_len = strlen(string);
+#if 0
+			printf("Working skipping to: %s\n", string);
+#endif
+			nhashes = 0;
+			continue;
+		}
+
 		for (unsigned i = 0; i < NTHREADS; i++) {
 			overflow = ascii_incr(string);
 			if (overflow) {
@@ -244,39 +277,18 @@ make_hash_sexy_time(void *v)
 	}
 }
 
-void
-init_random(char initvalue[128], int *len_out)
-{
-	size_t rd;
-	FILE *f = fopen("/dev/urandom", "rb");
-	const char *cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	    "abcdefghijklmnopqrstuvwxyz";
-	uint64_t rnd;
-
-	rd = fread(&rnd, sizeof rnd, 1, f);
-	ASSERT(rd == 1);
-	fclose(f);
-
-	unsigned clen = strlen(cs);
-	for (unsigned i = 0; rnd > 0; i++) {
-		initvalue[i] = cs[ rnd % clen ];
-		rnd /= clen;
-		*len_out += 1;
-	}
-
-	printf("Starting with: %s\n", initvalue);
-}
-
 int
 main(void)
 {
-	int r, len = 0;
+	int r;
 	pthread_attr_t pdetached;
 	pthread_t thr;
 	bool overflow;
+	unsigned len = 0;
 	char initvalue[128] = { 0 };
 
 	init_random(initvalue, &len);
+	printf("Starting with: %s\n", initvalue);
 
 	read_hex(target, target_bytes);
 

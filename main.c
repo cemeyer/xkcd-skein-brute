@@ -89,30 +89,6 @@ punlock(pthread_mutex_t *l)
 }
 
 inline void
-pwlock(pthread_rwlock_t *l)
-{
-	int r;
-	r = pthread_rwlock_wrlock(l);
-	ASSERT(r == 0);
-}
-
-inline void
-prlock(pthread_rwlock_t *l)
-{
-	int r;
-	r = pthread_rwlock_rdlock(l);
-	ASSERT(r == 0);
-}
-
-inline void
-prwunlock(pthread_rwlock_t *l)
-{
-	int r;
-	r = pthread_rwlock_unlock(l);
-	ASSERT(r == 0);
-}
-
-inline void
 condwait(pthread_cond_t *c, pthread_mutex_t *l)
 {
 	int r;
@@ -161,15 +137,18 @@ inline void
 ascii_incr_char(char *c, bool *carry_inout)
 {
 	if (*carry_inout) {
-		if (*c != '9') {
-			*c += 1;
+		if (*c != 'z') {
+			if (*c != 'Z')
+				*c += 1;
+			else
+				*c = 'a';
 			*carry_inout = false;
 		} else
-			*c = '0';
+			*c = 'A';
 	}
 }
 
-inline void
+inline bool
 ascii_incr(char *str)
 {
 	char *eos = str + strlen(str) - 1;
@@ -178,11 +157,11 @@ ascii_incr(char *str)
 	while (true) {
 		ascii_incr_char(eos, &carry);
 
-		if (eos == str)
-			ASSERT(!carry);
+		if (eos == str && carry)
+			return true;
 
 		if (!carry)
-			return;
+			return false;
 
 		eos--;
 	}
@@ -191,26 +170,30 @@ ascii_incr(char *str)
 void *
 generate_fricking_prefixes(void *un)
 {
-	char prefix[] = "00000000";
+	char prefix[] = "A";
 	struct prefix_work *wi;
+	bool overflow;
 
 	(void)un;
 
 	plock(&wlock);
-	while (true) {
+	while (wprefixes < 32) {
 		while (wprefixes >= 128)
 			condwait(&wcond, &wlock);
 
 		wi = xmalloc(sizeof *wi);
 		wi->prefix = xstrdup(prefix);
 
-		ascii_incr(prefix);
+		overflow = ascii_incr(prefix);
+		if (overflow)
+			break;
 
 		STAILQ_INSERT_TAIL(&whead, wi, entry);
 		wprefixes++;
 	}
-	punlock(&wlock);
 
+	punlock(&wlock);
+	return NULL;
 }
 
 inline unsigned
@@ -263,6 +246,8 @@ make_hash_sexy_time(void *un)
 	struct prefix_work *mywork;
 	size_t pref_len, str_len;
 	unsigned last_best = 4000;
+	bool overflow;
+	unsigned len = 1;
 
 	(void)un;
 
@@ -286,7 +271,7 @@ make_hash_sexy_time(void *un)
 
 	pref_len = strlen(mywork->prefix);
 	memcpy(string, mywork->prefix, pref_len);
-	memset(&string[pref_len], '0', 16);
+	memset(&string[pref_len], 'A', len);
 	free(mywork);
 
 	str_len = strlen(string);
@@ -311,7 +296,12 @@ make_hash_sexy_time(void *un)
 			}
 		}
 
-		ascii_incr(&string[pref_len]);
+		overflow = ascii_incr(&string[pref_len]);
+		if (overflow) {
+			len++;
+			memset(&string[pref_len], 'A', len);
+			str_len = strlen(string);
+		}
 	}
 }
 

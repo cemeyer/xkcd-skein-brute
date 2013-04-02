@@ -38,6 +38,7 @@ dump_hex(void *v, size_t sz)
 	}
 
 	printf("\n");
+	fflush(stdout);
 }
 
 uint8_t
@@ -303,9 +304,11 @@ make_hash_sexy_time(void *un)
 			last_best = rbestdist;
 			punlock(&rlock);
 
-			if (improved)
+			if (improved) {
 				printf("Found '%s' with distance %u\n", string,
 				    hdist);
+				fflush(stdout);
+			}
 		}
 
 		ascii_incr(&string[pref_len]);

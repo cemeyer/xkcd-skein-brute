@@ -136,11 +136,14 @@ inline void
 ascii_incr_char(char *c, bool *carry_inout)
 {
 	if (*carry_inout) {
-		if (*c != '9') {
-			*c += 1;
+		if (*c != 'z') {
+			if (*c != 'Z')
+				*c += 1;
+			else
+				*c = 'a';
 			*carry_inout = false;
 		} else
-			*c = '0';
+			*c = 'A';
 	}
 }
 
@@ -166,14 +169,14 @@ ascii_incr(char *str)
 void *
 generate_fricking_prefixes(void *un)
 {
-	char prefix[] = "00";
+	char prefix[] = "A";
 	struct prefix_work *wi;
 	bool overflow;
 
 	(void)un;
 
 	plock(&wlock);
-	while (true) {
+	while (wprefixes < 32) {
 		while (wprefixes >= 128)
 			condwait(&wcond, &wlock);
 
@@ -267,7 +270,7 @@ make_hash_sexy_time(void *un)
 
 	pref_len = strlen(mywork->prefix);
 	memcpy(string, mywork->prefix, pref_len);
-	memset(&string[pref_len], '0', len);
+	memset(&string[pref_len], 'A', len);
 	free(mywork);
 
 	str_len = strlen(string);
@@ -293,7 +296,7 @@ make_hash_sexy_time(void *un)
 		overflow = ascii_incr(&string[pref_len]);
 		if (overflow) {
 			len++;
-			memset(&string[pref_len], '0', len);
+			memset(&string[pref_len], 'A', len);
 			str_len = strlen(string);
 		}
 	}

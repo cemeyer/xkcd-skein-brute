@@ -13,6 +13,8 @@
 #include "skein_block.c"
 #include "skein.c"
 
+#define NTHREADS 16
+
 void __attribute__((always_inline))
 ASSERT(intptr_t i)
 {
@@ -127,12 +129,6 @@ struct prefix_work {
 	char *prefix;
 };
 
-pthread_t threads[128];
-pthread_mutex_t wlock = PTHREAD_MUTEX_INITIALIZER;
-STAILQ_HEAD(prefix_work_hd, prefix_work) whead;
-uint32_t wprefixes = 0;
-pthread_cond_t wcond = PTHREAD_COND_INITIALIZER;
-
 inline void
 ascii_incr_char(char *c, bool *carry_inout)
 {
@@ -165,35 +161,6 @@ ascii_incr(char *str)
 
 		eos--;
 	}
-}
-
-void *
-generate_fricking_prefixes(void *un)
-{
-	char prefix[] = "A";
-	struct prefix_work *wi;
-	bool overflow;
-
-	(void)un;
-
-	plock(&wlock);
-	while (wprefixes < 32) {
-		while (wprefixes >= 128)
-			condwait(&wcond, &wlock);
-
-		wi = xmalloc(sizeof *wi);
-		wi->prefix = xstrdup(prefix);
-
-		overflow = ascii_incr(prefix);
-		if (overflow)
-			break;
-
-		STAILQ_INSERT_TAIL(&whead, wi, entry);
-		wprefixes++;
-	}
-
-	punlock(&wlock);
-	return NULL;
 }
 
 inline unsigned
@@ -239,40 +206,20 @@ char beststring[128] = { 0 };
 pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
 
 void *
-make_hash_sexy_time(void *un)
+make_hash_sexy_time(void *v)
 {
-	char string[128] = { 0 };
+	char string[256] = { 0 },
+	     *initstr = v;
 	uint8_t loc_target_hash[1024/8];
-	struct prefix_work *mywork;
-	size_t pref_len, str_len;
+	size_t str_len;
 	unsigned last_best = 4000;
 	bool overflow;
-	unsigned len = 1;
-
-	(void)un;
+	unsigned len = strlen(initstr);
 
 	memcpy(loc_target_hash, target_bytes, sizeof(target_bytes));
 
-	plock(&wlock);
-	while (wprefixes == 0) {
-		wakeup(&wcond);
-		punlock(&wlock);
-		plock(&wlock);
-	}
-
-	ASSERT(!STAILQ_EMPTY(&whead));
-	mywork = STAILQ_FIRST(&whead);
-	ASSERT(mywork != NULL);
-
-	STAILQ_REMOVE_HEAD(&whead, entry);
-	wprefixes--;
-
-	punlock(&wlock);
-
-	pref_len = strlen(mywork->prefix);
-	memcpy(string, mywork->prefix, pref_len);
-	memset(&string[pref_len], 'A', len);
-	free(mywork);
+	strcpy(string, initstr);
+	free(initstr);
 
 	str_len = strlen(string);
 	while (true) {
@@ -296,11 +243,13 @@ make_hash_sexy_time(void *un)
 			}
 		}
 
-		overflow = ascii_incr(&string[pref_len]);
-		if (overflow) {
-			len++;
-			memset(&string[pref_len], 'A', len);
-			str_len = strlen(string);
+		for (unsigned i = 0; i < NTHREADS; i++) {
+			overflow = ascii_incr(string);
+			if (overflow) {
+				len++;
+				memset(string, 'A', len);
+				str_len = strlen(string);
+			}
 		}
 	}
 }
@@ -308,55 +257,33 @@ make_hash_sexy_time(void *un)
 int
 main(void)
 {
-#if 0
-	Skein1024_Ctxt_t c;
-	uint8_t out[1024/8],
-		in[4096];
-#endif
-	int r;
-	size_t rd;
-	unsigned nthr = 0;
+	int r, len = 1;
 	pthread_attr_t pdetached;
+	pthread_t thr;
+	bool overflow;
+	char initvalue[5] = "A";
 
 	read_hex(target, target_bytes);
-
-	STAILQ_INIT(&whead);
 
 	r = pthread_attr_init(&pdetached);
 	ASSERT(r == 0);
 	r = pthread_attr_setdetachstate(&pdetached, PTHREAD_CREATE_DETACHED);
 	ASSERT(r == 0);
 
-	r = pthread_create(&threads[nthr++], &pdetached,
-	    generate_fricking_prefixes, NULL);
-	ASSERT(r == 0);
-
-	for (unsigned i = 0; i < 16; i++) {
-		r = pthread_create(&threads[nthr++], &pdetached,
-		    make_hash_sexy_time, NULL);
+	for (unsigned i = 0; i < NTHREADS; i++) {
+		r = pthread_create(&thr, &pdetached, make_hash_sexy_time,
+		    xstrdup(initvalue));
 		ASSERT(r == 0);
+
+		overflow = ascii_incr(initvalue);
+		if (overflow) {
+			len++;
+			memset(initvalue, 'A', len);
+		}
 	}
 
 	while (true)
 		sleep(100000);
-
-	(void)rd;
-
-#if 0
-	rd = fread(in, 1, sizeof in, stdin);
-
-	r = Skein1024_Init(&c, 1024);
-	ASSERT(r == SKEIN_SUCCESS);
-
-	r = Skein1024_Update(&c, in, rd);
-	ASSERT(r == SKEIN_SUCCESS);
-
-	r = Skein1024_Final(&c, out);
-	ASSERT(r == SKEIN_SUCCESS);
-
-	dump_hex(out, sizeof out);
-	dump_hex(target_bytes, sizeof target_bytes);
-#endif
 
 	return 0;
 }

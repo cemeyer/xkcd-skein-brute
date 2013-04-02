@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2013 Conrad Meyer <cse.cem@gmail.com>
+ *
+ * Feel free to use, modify, distribute, etc, this work under the terms of the
+ * MIT license (file 'LICENSE').
+ */
+
 #include <stdbool.h>
 #include <ctype.h>
 #include <endian.h>

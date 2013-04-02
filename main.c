@@ -121,13 +121,16 @@ ascii_incr_char(char *c, bool *carry_inout)
 {
 	if (*carry_inout) {
 		if (*c != 'z') {
-			if (*c != 'Z')
-				*c += 1;
-			else
+			if (*c != 'Z') {
+				if (*c != '9')
+					*c += 1;
+				else
+					*c = 'A';
+			} else
 				*c = 'a';
 			*carry_inout = false;
 		} else
-			*c = 'A';
+			*c = '0';
 	}
 }
 
@@ -248,7 +251,7 @@ main(void)
 	pthread_attr_t pdetached;
 	pthread_t thr;
 	bool overflow;
-	char initvalue[17] = "HnFZBl";
+	char initvalue[17] = "0";
 
 	read_hex(target, target_bytes);
 

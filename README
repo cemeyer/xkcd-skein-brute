@@ -25,4 +25,5 @@ With the assembly implementation:
     Trial 3 Skeins/sec: 1022662.78
     Trial 4 Skeins/sec: 1141148.95
 
-So I'm going to try and use that next...
+Unfortunately, the hashes produced by the assembly implementation seem
+incorrect. =(

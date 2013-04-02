@@ -441,10 +441,12 @@ void Skein1024_Process_Block(Skein1024_Ctxt_t *ctx,const u08b_t *blkPtr,size_t b
 #undef  RCNT
 #define RCNT  (SKEIN1024_ROUNDS_TOTAL/8)
 
+#if 0
 #ifdef  SKEIN_LOOP                              /* configure how much to unroll the loop */
 #define SKEIN_UNROLL_1024 ((SKEIN_LOOP)%10)
 #else
 #define SKEIN_UNROLL_1024 (0)
+#endif
 #endif
 
 #if (SKEIN_UNROLL_1024 != 0)

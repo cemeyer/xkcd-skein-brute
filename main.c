@@ -244,14 +244,39 @@ make_hash_sexy_time(void *v)
 	}
 }
 
+void
+init_random(char initvalue[128], int *len_out)
+{
+	size_t rd;
+	FILE *f = fopen("/dev/urandom", "rb");
+	const char *cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	    "abcdefghijklmnopqrstuvwxyz";
+	uint64_t rnd;
+
+	rd = fread(&rnd, sizeof rnd, 1, f);
+	ASSERT(rd == 1);
+	fclose(f);
+
+	unsigned clen = strlen(cs);
+	for (unsigned i = 0; rnd > 0; i++) {
+		initvalue[i] = cs[ rnd % clen ];
+		rnd /= clen;
+		*len_out += 1;
+	}
+
+	printf("Starting with: %s\n", initvalue);
+}
+
 int
 main(void)
 {
-	int r, len = 6;
+	int r, len = 0;
 	pthread_attr_t pdetached;
 	pthread_t thr;
 	bool overflow;
-	char initvalue[17] = "0";
+	char initvalue[128] = { 0 };
+
+	init_random(initvalue, &len);
 
 	read_hex(target, target_bytes);
 

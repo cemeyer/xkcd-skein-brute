@@ -9,6 +9,8 @@
 
 #include <sys/queue.h>
 
+#include <curl/curl.h>
+
 #include "skein.h"
 #if 1
 # define SKEIN_UNROLL_1024 10
@@ -46,6 +48,8 @@ void
 read_hex(const char *hs, uint8_t *out)
 {
 	size_t slen = strlen(hs);
+
+	printf("\n"); /* wtf, -O3 */
 
 	ASSERT(slen % 8 == 0);
 
@@ -192,8 +196,9 @@ hash_dist(const char *trial, size_t len, uint8_t *hash)
 }
 
 unsigned rbestdist = 2000;
-char beststring[128] = { 0 };
+char beststring[256] = { 0 };
 pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t rcond = PTHREAD_COND_INITIALIZER;
 
 void
 init_random(char initvalue[128], unsigned *len_out)
@@ -213,6 +218,66 @@ init_random(char initvalue[128], unsigned *len_out)
 		initvalue[i] = cs[ rnd % clen ];
 		rnd /= clen;
 		*len_out += 1;
+	}
+}
+
+size_t
+curl_devnull(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+
+	(void)ptr;
+	(void)userdata;
+
+	return size*nmemb;
+}
+
+void *
+submit(void *un)
+{
+	unsigned best = 420;
+	char bests[256],
+	     fmt[300],
+	     errbuf[CURL_ERROR_SIZE];
+	CURL *ch;
+	CURLcode r;
+
+	(void)un;
+	ch = curl_easy_init();
+	ASSERT(ch != NULL);
+	r = curl_easy_setopt(ch, CURLOPT_URL,
+	    "http://almamater.xkcd.com/?edu=uw.edu");
+	ASSERT(r == CURLE_OK);
+	r = curl_easy_setopt(ch, CURLOPT_POST, 1);
+	ASSERT(r == CURLE_OK);
+	r = curl_easy_setopt(ch, CURLOPT_ERRORBUFFER, errbuf);
+	ASSERT(r == CURLE_OK);
+	r = curl_easy_setopt(ch, CURLOPT_WRITEFUNCTION, curl_devnull);
+	ASSERT(r == CURLE_OK);
+
+	while (true) {
+		plock(&rlock);
+		while (rbestdist >= best)
+			condwait(&rcond, &rlock);
+
+		best = rbestdist;
+		memcpy(bests, beststring, sizeof beststring);
+		punlock(&rlock);
+
+		printf("Submit - got %s (%u) to submit!\n", bests, best);
+
+retry:
+		sprintf(fmt, "hashable=%s", bests);
+		r = curl_easy_setopt(ch, CURLOPT_POSTFIELDS, (void*)fmt);
+		ASSERT(r == CURLE_OK);
+
+		r = curl_easy_perform(ch);
+		if (r != CURLE_OK) {
+			printf("An error occurred for %s: %s\n", bests, errbuf);
+			sleep(15);
+			goto retry;
+		}
+
+		printf("Submitted %s!\n", bests);
 	}
 }
 
@@ -244,6 +309,7 @@ make_hash_sexy_time(void *v)
 				rbestdist = hdist;
 				memcpy(beststring, string, sizeof beststring);
 				improved = true;
+				wakeup(&rcond);
 			}
 			last_best = rbestdist;
 			punlock(&rlock);
@@ -295,6 +361,9 @@ main(void)
 	r = pthread_attr_init(&pdetached);
 	ASSERT(r == 0);
 	r = pthread_attr_setdetachstate(&pdetached, PTHREAD_CREATE_DETACHED);
+	ASSERT(r == 0);
+
+	r = pthread_create(&thr, &pdetached, submit, NULL);
 	ASSERT(r == 0);
 
 	for (unsigned i = 0; i < NTHREADS; i++) {

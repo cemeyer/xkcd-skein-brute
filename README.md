@@ -40,3 +40,15 @@ Locking overhead
 
 As time goes on, threads should take the global lock less and less. To enable
 some lock-debugging code, build with `-DLOCK_OVERHEAD_DEBUG`.
+
+For example, after a few minutes (after finding a 421-bit wrong string), we
+see:
+
+    Found 'KOXEI9wcSxS' with distance 421
+    lock taken 109 times (0.535 locks/sec)
+    lock taken 110 times (0.417 locks/sec)
+    lock taken 111 times (0.412 locks/sec)
+    lock taken 112 times (0.385 locks/sec)
+    lock taken 113 times (0.261 locks/sec)
+    Found 'Q1kDrQuEOf6' with distance 414
+    lock taken 113 times (0.261 locks/sec)

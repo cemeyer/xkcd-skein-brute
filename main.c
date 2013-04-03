@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <endian.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -26,6 +27,11 @@
 #include "skein.c"
 
 #define NTHREADS 16
+
+#ifdef LOCK_OVERHEAD_DEBUG
+uint64_t rlock_taken = 0;
+struct timespec g_begin;
+#endif
 
 inline void
 ASSERT(intptr_t i)
@@ -78,12 +84,28 @@ plock(pthread_mutex_t *l)
 	int r;
 	r = pthread_mutex_lock(l);
 	ASSERT(r == 0);
+#ifdef LOCK_OVERHEAD_DEBUG
+	rlock_taken++;
+#endif
 }
 
 inline void
 punlock(pthread_mutex_t *l)
 {
 	int r;
+#ifdef LOCK_OVERHEAD_DEBUG
+	struct timespec cur;
+	double lps;
+
+	r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cur);
+	ASSERT(r == 0);
+
+	lps = (double)rlock_taken / ((double)cur.tv_sec - g_begin.tv_sec +
+	    0.000000001 * ((double)cur.tv_nsec - g_begin.tv_nsec));
+	printf("lock taken %"PRIu64" times (%.03f locks/sec)\n", rlock_taken,
+	    lps);
+#endif
+
 	r = pthread_mutex_unlock(l);
 	ASSERT(r == 0);
 }
@@ -364,6 +386,11 @@ main(void)
 	printf("Starting with: %s\n", initvalue);
 
 	read_hex(target, target_bytes);
+
+#ifdef LOCK_OVERHEAD_DEBUG
+	r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &g_begin);
+	ASSERT(r == 0);
+#endif
 
 	r = pthread_attr_init(&pdetached);
 	ASSERT(r == 0);

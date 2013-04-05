@@ -198,29 +198,45 @@ hash_dist(const char *trial, size_t len, uint8_t *hash)
 }
 
 unsigned rbestdist = 2000;
-char beststring[256] = { 0 };
+char beststring[MAX_STRING] = { 0 };
 pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t rcond = PTHREAD_COND_INITIALIZER;
 
+__thread FILE *frand = NULL;
 void
-init_random(char initvalue[128], unsigned *len_out)
+init_random(char initvalue[MAX_STRING], unsigned *len_out)
 {
-	size_t rd;
-	FILE *f = fopen("/dev/urandom", "rb");
 	const char *cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	    "abcdefghijklmnopqrstuvwxyz";
-	uint64_t rnd;
+	const unsigned cslen = strlen(cs);
 
-	rd = fread(&rnd, sizeof rnd, 1, f);
-	ASSERT(rd == 1);
-	fclose(f);
+	uint64_t rnd[4];
+	size_t rd;
+	unsigned r, i;
 
-	unsigned clen = strlen(cs);
-	for (unsigned i = 0; rnd > 0; i++) {
-		initvalue[i] = cs[ rnd % clen ];
-		rnd /= clen;
-		*len_out += 1;
+	if (frand == NULL) {
+		frand = fopen("/dev/urandom", "rb");
+		ASSERT(frand != NULL);
 	}
+
+	rd = fread(rnd, sizeof rnd[0], NELEM(rnd), frand);
+	ASSERT(rd == NELEM(rnd));
+
+	i = 0;
+	for (r = 0; r < NELEM(rnd); r++) {
+		for (; rnd[r] > 0; i++) {
+			ASSERT(i < MAX_STRING - 1);
+
+			initvalue[i] = cs[ rnd[r] % cslen ];
+			rnd[r] /= cslen;
+		}
+	}
+
+	ASSERT(i < MAX_STRING);
+	memset(&initvalue[i], 0, MAX_STRING - i);
+
+	if (len_out != NULL)
+		*len_out = i;
 }
 
 size_t
@@ -284,21 +300,20 @@ retry:
 }
 
 void *
-make_hash_sexy_time(void *v)
+hash_worker(void *unused)
 {
-	char string[256] = { 0 },
-	     *initstr = v;
+	char string[MAX_STRING] = { 0 };
 	uint8_t loc_target_hash[1024/8];
-	size_t str_len;
-	unsigned last_best = 4000;
-	bool overflow;
-	unsigned len = strlen(initstr);
 	uint64_t nhashes = 0;
+	size_t str_len;
+	unsigned last_best = 4000, len;
+	bool overflow;
+
+	(void)unused;
 
 	memcpy(loc_target_hash, target_bytes, sizeof(target_bytes));
 
-	strcpy(string, initstr);
-	free(initstr);
+	init_random(string, &len);
 
 	str_len = strlen(string);
 	while (true) {
@@ -351,12 +366,6 @@ main(void)
 	int r;
 	pthread_attr_t pdetached;
 	pthread_t thr;
-	bool overflow;
-	unsigned len = 0;
-	char initvalue[128] = { 0 };
-
-	init_random(initvalue, &len);
-	printf("Starting with: %s\n", initvalue);
 
 	read_hex(target, target_bytes);
 
@@ -374,15 +383,8 @@ main(void)
 	ASSERT(r == 0);
 
 	for (unsigned i = 0; i < NTHREADS; i++) {
-		r = pthread_create(&thr, &pdetached, make_hash_sexy_time,
-		    xstrdup(initvalue));
+		r = pthread_create(&thr, &pdetached, hash_worker, NULL);
 		ASSERT(r == 0);
-
-		overflow = ascii_incr(initvalue);
-		if (overflow) {
-			len++;
-			memset(initvalue, 'A', len);
-		}
 	}
 
 	while (true)

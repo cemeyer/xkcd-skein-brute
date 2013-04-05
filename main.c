@@ -27,17 +27,25 @@
 #include "skein.c"
 
 #define NTHREADS 16
+#define NELEM(arr) ((sizeof(arr)) / (sizeof((arr)[0])))
+#define MAX_STRING 256
 
 #ifdef LOCK_OVERHEAD_DEBUG
 uint64_t rlock_taken = 0;
 struct timespec g_begin;
 #endif
 
-inline void
-ASSERT(intptr_t i)
+#ifdef __NO_INLINE__
+# define TRY_INLINE
+#else
+# define TRY_INLINE inline
+#endif
+
+TRY_INLINE void
+ASSERT(uintptr_t i)
 {
 
-	if (!i)
+	if (i == 0)
 		abort();
 }
 
@@ -66,7 +74,7 @@ read_hex(const char *hs, uint8_t *out)
 	}
 }
 
-inline void
+TRY_INLINE void
 plock(pthread_mutex_t *l)
 {
 	int r;
@@ -77,7 +85,7 @@ plock(pthread_mutex_t *l)
 #endif
 }
 
-inline void
+TRY_INLINE void
 punlock(pthread_mutex_t *l)
 {
 	int r;
@@ -98,7 +106,7 @@ punlock(pthread_mutex_t *l)
 	ASSERT(r == 0);
 }
 
-inline void
+TRY_INLINE void
 condwait(pthread_cond_t *c, pthread_mutex_t *l)
 {
 	int r;
@@ -106,16 +114,7 @@ condwait(pthread_cond_t *c, pthread_mutex_t *l)
 	ASSERT(r == 0);
 }
 
-inline char *
-xstrdup(const char *s)
-{
-	char *r;
-	r = strdup(s);
-	ASSERT(r != NULL);
-	return r;
-}
-
-inline void
+TRY_INLINE void
 wakeup(pthread_cond_t  *c)
 {
 	int r;
@@ -123,7 +122,7 @@ wakeup(pthread_cond_t  *c)
 	ASSERT(r == 0);
 }
 
-inline void
+TRY_INLINE void
 ascii_incr_char(char *c, bool *carry_inout)
 {
 	if (*carry_inout) {
@@ -141,7 +140,7 @@ ascii_incr_char(char *c, bool *carry_inout)
 	}
 }
 
-inline bool
+TRY_INLINE bool
 ascii_incr(char *str)
 {
 	char *eos = str + strlen(str) - 1;
@@ -160,7 +159,7 @@ ascii_incr(char *str)
 	}
 }
 
-inline unsigned
+TRY_INLINE unsigned
 xor_dist(uint8_t *a8, uint8_t *b8, size_t len)
 {
 	unsigned tot = 0;
@@ -179,7 +178,7 @@ xor_dist(uint8_t *a8, uint8_t *b8, size_t len)
 	return tot;
 }
 
-inline unsigned
+TRY_INLINE unsigned
 hash_dist(const char *trial, size_t len, uint8_t *hash)
 {
 	uint8_t trhash[1024/8];
@@ -238,8 +237,8 @@ void *
 submit(void *un)
 {
 	unsigned best = 420;
-	char bests[256],
-	     fmt[300],
+	char bests[MAX_STRING],
+	     fmt[MAX_STRING + 64],
 	     errbuf[CURL_ERROR_SIZE];
 	CURL *ch;
 	CURLcode r;

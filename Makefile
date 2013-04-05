@@ -1,7 +1,10 @@
+OPTFLAGS = -O3 -march=native -mtune=native
+
 main: main.c skein.c
-	gcc -std=gnu99 -pthread -Wall -Wextra -O3 \
+	gcc -std=gnu99 -pthread -Wall -Wextra \
 		-fno-strict-aliasing -Wno-strict-aliasing \
-		-march=native -mtune=native -lcurl -lrt \
+		-lcurl -lrt \
+		${OPTFLAGS} \
 		$< \
 		-o $@
 

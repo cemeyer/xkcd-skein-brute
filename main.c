@@ -252,7 +252,7 @@ curl_devnull(char *ptr, size_t size, size_t nmemb, void *userdata)
 void *
 submit(void *un)
 {
-	unsigned best = 420;
+	unsigned best = 384;
 	char bests[MAX_STRING],
 	     fmt[MAX_STRING + 64],
 	     errbuf[CURL_ERROR_SIZE];

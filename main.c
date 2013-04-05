@@ -45,18 +45,6 @@ const char *target =
 "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbdfbae0d4c4fdf9317c80cc5fe04c6429073466cf29706b8c25999ddd2f6540d4475cc977b87f4757be023f19b8f4035d7722886b78869826de916a79cf9c94cc79cd4347d24b567aa3e2390a573a373a48a5e676640c79cc70197e1c5e7f902fb53ca1858b6";
 uint8_t target_bytes[1024/8];
 
-uint8_t
-nibble(char c)
-{
-
-	c = tolower(c);
-	if (c >= 'a' && c <= 'f')
-		return c - 'a';
-	else
-		return c - '0';
-
-}
-
 void
 read_hex(const char *hs, uint8_t *out)
 {
@@ -118,15 +106,6 @@ condwait(pthread_cond_t *c, pthread_mutex_t *l)
 	ASSERT(r == 0);
 }
 
-inline void *
-xmalloc(size_t z)
-{
-	void *r;
-	r = malloc(z);
-	ASSERT(r != NULL);
-	return r;
-}
-
 inline char *
 xstrdup(const char *s)
 {
@@ -143,11 +122,6 @@ wakeup(pthread_cond_t  *c)
 	r = pthread_cond_broadcast(c);
 	ASSERT(r == 0);
 }
-
-struct prefix_work {
-	STAILQ_ENTRY(prefix_work) entry;
-	char *prefix;
-};
 
 inline void
 ascii_incr_char(char *c, bool *carry_inout)

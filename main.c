@@ -5,19 +5,39 @@
  * MIT license (file 'LICENSE').
  */
 
-#include <stdbool.h>
+/*
+ * Build-time configuration options.
+ *
+ * E.g., to build without CURL:
+ *     make EXTRAFLAGS="-DHAVE_CURL=0" LIBFLAGS=""
+ */
+
+#ifdef __linux__
+# define _GNU_SOURCE
+# define HAVE_GETOPT_LONG 1
+#endif
+
+#ifndef HAVE_CURL
+# define HAVE_CURL 1
+#endif
+
+
 #include <ctype.h>
 #include <endian.h>
+#include <getopt.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include <sys/queue.h>
 
-#include <curl/curl.h>
+#if HAVE_CURL == 1
+# include <curl/curl.h>
+#endif
 
 #include "skein.h"
 #if 1
@@ -239,6 +259,7 @@ init_random(char initvalue[MAX_STRING], unsigned *len_out)
 		*len_out = i;
 }
 
+#if HAVE_CURL == 1
 size_t
 curl_devnull(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
@@ -298,6 +319,7 @@ retry:
 		printf("Submitted %s!\n", bests);
 	}
 }
+#endif  /* HAVE_CURL */
 
 void *
 hash_worker(void *unused)
@@ -379,8 +401,10 @@ main(void)
 	r = pthread_attr_setdetachstate(&pdetached, PTHREAD_CREATE_DETACHED);
 	ASSERT(r == 0);
 
+#if HAVE_CURL == 1
 	r = pthread_create(&thr, &pdetached, submit, NULL);
 	ASSERT(r == 0);
+#endif
 
 	for (unsigned i = 0; i < NTHREADS; i++) {
 		r = pthread_create(&thr, &pdetached, hash_worker, NULL);

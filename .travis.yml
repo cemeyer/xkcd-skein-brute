@@ -1,8 +1,5 @@
 language: c
-compiler:
-  - clang
-  - gcc
+compiler: gcc
 before_install:
   - sudo apt-get -y install libcurl4-openssl-dev libcurl3
-# No -flto for Travis-CI (breaks Clang):
-script: make OPTFLAGS=-O3
+script: make

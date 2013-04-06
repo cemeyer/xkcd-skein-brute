@@ -3,5 +3,5 @@ compiler:
   - clang
   - gcc
 before_install:
-  - sudo apt-get -y install libcurl3-dev
+  - sudo apt-get -y install libcurl4-openssl-dev libcurl3
 script: make

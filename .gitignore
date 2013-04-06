@@ -1,3 +1,5 @@
 *.o
 main
 NIST/
+TAGS
+exp/

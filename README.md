@@ -12,6 +12,31 @@ An ideal solver would be an implementation of the inverse skein function. Hah.
 
 See main.c.
 
+Compile-time options
+--------------------
+
+The build may be configured by employing `EXTRAFLAGS`, `OPTFLAGS`, and
+`LIBFLAGS`. For example, to build without CURL:
+
+    make EXTRAFLAGS="-DHAVE_CURL=0" LIBFLAGS=""
+
+Or, to build at a different optimization level:
+
+    make OPTFLAGS=-O2
+
+Run-time options
+----------------
+
+    Usage: ./main [OPTIONS]
+    
+      -h, --help            This help
+      -B, --benchmark=LIMIT     Benchmark LIMIT hashes
+      -H, --hash=HASH       Brute-force HASH (1024-bit hex string)
+                    (HASH defaults to XKCD 1193)
+      -t, --trials=TRIALS       Run TRIALS in benchmark mode
+      -T, --threads=THREADS     Use THREADS concurrent workers
+
+
 Skein block performance
 -----------------------
 
@@ -35,6 +60,14 @@ With the assembly implementation:
 Unfortunately, the hashes produced by the assembly implementation seem
 incorrect. =(
 
+Brute-force performance
+-----------------------
+
+The best performanace profile (hashes per second) I've found on my 4-core Core
+i7-2600k is `EXTRAFLAGS="-DUNROLL_FACTOR=10"` and `OPTFLAGS="-O3 -march=native
+-mtune=native"`, with only a single thread running. Both of these compile-time
+options were previously the defaults, and remain so.
+
 Locking overhead
 ----------------
 
@@ -52,3 +85,14 @@ see:
     lock taken 113 times (0.261 locks/sec)
     Found 'Q1kDrQuEOf6' with distance 414
     lock taken 113 times (0.261 locks/sec)
+
+Future work
+-----------
+
+Single-threaded overall performance is currently better than 2 or 4 threads.
+This is somewhat suspect on a 4-core machine, so it bears future investigation.
+
+Additionally, we should poke into some of the non-default GCC optimizations and
+see if they help.
+
+Finally, we should use PGO (issue #6) during builds.

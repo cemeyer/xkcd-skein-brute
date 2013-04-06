@@ -14,7 +14,21 @@
 
 #ifdef __linux__
 # define _GNU_SOURCE
-# define HAVE_GETOPT_LONG 1
+# ifndef HAVE_GETOPT_LONG
+#  define HAVE_GETOPT_LONG 1
+# endif
+#endif
+
+#ifndef HAVE_GETOPT_LONG
+# define HAVE_GETOPT_LONG 0
+#endif
+
+#ifdef UNROLL_FACTOR
+# if UNROLL_FACTOR != 0 && (10 % UNROLL_FACTOR) != 0
+#  error Unroll factor must be 0, 2, 5, or 10
+# endif
+#else  /* !defined(UNROLL_FACTOR) */
+# define UNROLL_FACTOR 10
 #endif
 
 #ifndef HAVE_CURL
@@ -26,6 +40,7 @@
 #include <endian.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -41,25 +56,50 @@
 
 #include "skein.h"
 #if 1
-# define SKEIN_UNROLL_1024 10
+# define SKEIN_UNROLL_1024 UNROLL_FACTOR
 # include "skein_block.c"
 #endif
 #include "skein.c"
 
-#define NTHREADS 16
 #define NELEM(arr) ((sizeof(arr)) / (sizeof((arr)[0])))
-#define MAX_STRING 256
-
-#ifdef LOCK_OVERHEAD_DEBUG
-uint64_t rlock_taken = 0;
-struct timespec g_begin;
-#endif
+#define MAX_STRING 2048
 
 #ifdef __NO_INLINE__
 # define TRY_INLINE
 #else
 # define TRY_INLINE inline
 #endif
+
+/*
+ * Globals
+ */
+
+#ifdef LOCK_OVERHEAD_DEBUG
+uint64_t rlock_taken = 0;
+struct timespec g_lock_begin;
+#endif
+
+/*
+ * For some reason -O3 tries to read waaaaaaay beyond the end of this string.
+ * Optimization bug in GCC or Glibc sscanf?
+ */
+char target[2048] = "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbdfbae"
+"0d4c4fdf9317c80cc5fe04c6429073466cf29706b8c25999ddd2f6540d4475cc977b87f4757be0"
+"23f19b8f4035d7722886b78869826de916a79cf9c94cc79cd4347d24b567aa3e2390a573a373a4"
+"8a5e676640c79cc70197e1c5e7f902fb53ca1858b6\0";
+uint8_t target_bytes[/*1024/8*/ 2048];
+
+unsigned rbestdist = 440;
+char beststring[MAX_STRING] = { 0 };
+pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t rcond = PTHREAD_COND_INITIALIZER;
+uint64_t t_benchlimit = UINT64_MAX;
+
+struct timespec g_bench_begin;
+
+/*
+ * Subs!
+ */
 
 TRY_INLINE void
 ASSERT(uintptr_t i)
@@ -69,16 +109,10 @@ ASSERT(uintptr_t i)
 		abort();
 }
 
-const char *target =
-"5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbdfbae0d4c4fdf9317c80cc5fe04c6429073466cf29706b8c25999ddd2f6540d4475cc977b87f4757be023f19b8f4035d7722886b78869826de916a79cf9c94cc79cd4347d24b567aa3e2390a573a373a48a5e676640c79cc70197e1c5e7f902fb53ca1858b6";
-uint8_t target_bytes[1024/8];
-
 void
 read_hex(const char *hs, uint8_t *out)
 {
 	size_t slen = strlen(hs);
-
-	printf("\n"); /* wtf, -O3 */
 
 	ASSERT(slen % 8 == 0);
 
@@ -92,6 +126,21 @@ read_hex(const char *hs, uint8_t *out)
 		out += sizeof(uint32_t);
 		hs += 2*sizeof(uint32_t);
 	}
+}
+
+TRY_INLINE double
+elapsed(struct timespec *begin)
+{
+	struct timespec cur;
+	double el;
+	int r;
+
+	r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cur);
+	ASSERT(r == 0);
+
+	el = (double)cur.tv_sec - begin->tv_sec + 0.000000001 *
+	    ((double)cur.tv_nsec - begin->tv_nsec);
+	return el;
 }
 
 TRY_INLINE void
@@ -110,14 +159,9 @@ punlock(pthread_mutex_t *l)
 {
 	int r;
 #ifdef LOCK_OVERHEAD_DEBUG
-	struct timespec cur;
 	double lps;
 
-	r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cur);
-	ASSERT(r == 0);
-
-	lps = (double)rlock_taken / ((double)cur.tv_sec - g_begin.tv_sec +
-	    0.000000001 * ((double)cur.tv_nsec - g_begin.tv_nsec));
+	lps = (double)rlock_taken / elapsed(&g_lock_begin);
 	printf("lock taken %"PRIu64" times (%.03f locks/sec)\n", rlock_taken,
 	    lps);
 #endif
@@ -216,11 +260,6 @@ hash_dist(const char *trial, size_t len, uint8_t *hash)
 
 	return xor_dist(trhash, hash, sizeof trhash);
 }
-
-unsigned rbestdist = 2000;
-char beststring[MAX_STRING] = { 0 };
-pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t rcond = PTHREAD_COND_INITIALIZER;
 
 __thread FILE *frand = NULL;
 void
@@ -326,7 +365,7 @@ hash_worker(void *unused)
 {
 	char string[MAX_STRING] = { 0 };
 	uint8_t loc_target_hash[1024/8];
-	uint64_t nhashes = 0;
+	uint64_t nhashes_wrap = 0, nhashes = 0, my_limit;
 	size_t str_len;
 	unsigned last_best = 4000, len;
 	bool overflow;
@@ -334,13 +373,15 @@ hash_worker(void *unused)
 	(void)unused;
 
 	memcpy(loc_target_hash, target_bytes, sizeof(target_bytes));
+	my_limit = t_benchlimit;
 
 	init_random(string, &len);
 
 	str_len = strlen(string);
 	while (true) {
 		unsigned hdist = hash_dist(string, str_len, loc_target_hash);
-		if (hdist < last_best) {
+
+		if (my_limit == UINT64_MAX && hdist < last_best) {
 			bool improved = false;
 
 			plock(&rlock);
@@ -361,58 +402,216 @@ hash_worker(void *unused)
 		}
 
 		nhashes++;
-		if (nhashes > 4000000ULL) {
+		nhashes_wrap++;
+
+		if (my_limit != UINT64_MAX && nhashes >= my_limit)
+			return NULL;
+
+		if (nhashes_wrap > 4000000ULL) {
 			init_random(string, &len);
 			str_len = strlen(string);
 #if 0
 			printf("Working skipping to: %s\n", string);
 #endif
-			nhashes = 0;
+			nhashes_wrap = 0;
 			continue;
 		}
 
-		for (unsigned i = 0; i < NTHREADS; i++) {
-			overflow = ascii_incr(string);
-			if (overflow) {
-				len++;
-				memset(string, 'A', len);
-				str_len = strlen(string);
-			}
+		overflow = ascii_incr(string);
+		if (overflow) {
+			len++;
+			memset(string, 'A', len);
+			str_len = strlen(string);
 		}
 	}
 }
 
-int
-main(void)
+void
+usage(const char *prg0)
 {
-	int r;
+
+#if HAVE_GETOPT_LONG == 1
+# define HELP_EX  ", --help\t\t\t"
+# define BENCH_EX ", --benchmark=LIMIT\t\t"
+# define HASH_EX  ", --hash=HASH\t\t"
+# define HASH_EXX "\t\t"
+# define TRIAL_EX ", --trials=TRIALS\t\t"
+# define THRED_EX ", --threads=THREADS\t\t"
+#else
+# define HELP_EX  "\t\t"
+# define BENCH_EX " LIMIT\t"
+# define HASH_EX  " HASH\t"
+# define HASH_EXX ""
+# define TRIAL_EX " TRIALS\t"
+# define THRED_EX " THREADS\t"
+#endif
+
+	fprintf(stderr, "Usage: %s [OPTIONS]\n", prg0);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "  -h" HELP_EX  "This help\n");
+	fprintf(stderr, "  -B" BENCH_EX "Benchmark LIMIT hashes\n");
+	fprintf(stderr, "  -H" HASH_EX  "Brute-force HASH (1024-bit hex string)\n");
+	fprintf(stderr, "\t\t" HASH_EXX "(HASH defaults to XKCD 1193)\n");
+	fprintf(stderr, "  -t" TRIAL_EX "Run TRIALS in benchmark mode\n");
+	fprintf(stderr, "  -T" THRED_EX "Use THREADS concurrent workers\n");
+}
+
+int
+main(int argc, char **argv)
+{
 	pthread_attr_t pdetached;
-	pthread_t thr;
+	pthread_t *threads = NULL;
+	uint64_t benchlimit = UINT64_MAX;
+#if HAVE_CURL == 1
+	pthread_t curl_thread;
+#endif
+	unsigned i, trial = 0, ntrials = 3, nthreads = 0;
+	int r, opt, exit_code = EXIT_FAILURE;
+
+	const char *optstring = "hH:B:t:T:";
+#if HAVE_GETOPT_LONG == 1
+	const struct option options[] = {
+		{ "help", no_argument, NULL, 'h' },
+		{ "hash", required_argument, NULL, 'H' },
+		{ "benchmark", required_argument, NULL, 'B' },
+		{ "trials", required_argument, NULL, 't' },
+		{ "threads", required_argument, NULL, 'T' },
+		{ 0 },
+	};
+
+# define _GETOPT() getopt_long(argc, argv, optstring, options, NULL)
+#else
+# define _GETOPT() getopt(argc, argv, optstring)
+#endif
+
+	while ((opt = _GETOPT()) != -1) {
+		switch (opt) {
+		case 'B':
+			benchlimit = atoll(optarg);
+			break;
+		case 't':
+			ntrials = atoi(optarg);
+			break;
+		case 'T':
+			nthreads = atoi(optarg);
+			break;
+		case 'h':
+			exit_code = EXIT_SUCCESS;
+			optarg = "";
+			/* FALLTHROUGH */
+		case 'H':
+			if (strlen(optarg) == strlen(target)) {
+				strcpy(target, optarg);
+				break;
+			}
+			/* FALLTHROUGH */
+		default:  /* '?', '\0' */
+			usage(argv[0]);
+			exit(exit_code);
+		}
+	}
+
+	/* defaults if user doesn't give an option */
+	if (nthreads == 0) {
+		long n = sysconf(_SC_NPROCESSORS_ONLN);
+
+		if (n == -1)
+			nthreads = 1;
+		else
+			nthreads = n;
+
+		if (benchlimit == UINT64_MAX) {
+			printf("Defaulting to %u threads\n", nthreads);
+			fflush(stdout);
+		}
+	}
+
+	if (nthreads > 1) {
+		threads = malloc(nthreads * sizeof(*threads));
+		ASSERT(threads != NULL);
+	}
 
 	read_hex(target, target_bytes);
 
+retrial:
 #ifdef LOCK_OVERHEAD_DEBUG
-	r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &g_begin);
+	r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &g_lock_begin);
 	ASSERT(r == 0);
 #endif
 
 	r = pthread_attr_init(&pdetached);
 	ASSERT(r == 0);
-	r = pthread_attr_setdetachstate(&pdetached, PTHREAD_CREATE_DETACHED);
-	ASSERT(r == 0);
+
+	if (benchlimit != UINT64_MAX) {
+		/* benchmark mode */
+		t_benchlimit = benchlimit / nthreads;
+
+		r = pthread_attr_setdetachstate(&pdetached, PTHREAD_CREATE_JOINABLE);
+		ASSERT(r == 0);
+
+		r = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &g_bench_begin);
+		ASSERT(r == 0);
+	} else {
+		/* non-benchmark mode */
+		r = pthread_attr_setdetachstate(&pdetached, PTHREAD_CREATE_DETACHED);
+		ASSERT(r == 0);
 
 #if HAVE_CURL == 1
-	r = pthread_create(&thr, &pdetached, submit, NULL);
-	ASSERT(r == 0);
-#endif
-
-	for (unsigned i = 0; i < NTHREADS; i++) {
-		r = pthread_create(&thr, &pdetached, hash_worker, NULL);
+		r = pthread_create(&curl_thread, &pdetached, submit, NULL);
 		ASSERT(r == 0);
+#endif
 	}
 
-	while (true)
-		sleep(100000);
+	if (nthreads > 1) {
+		for (i = 0; i < nthreads; i++) {
+			r = pthread_create(&threads[i], &pdetached, hash_worker, NULL);
+			ASSERT(r == 0);
+		}
+	} else {
+		(void)hash_worker(NULL);
+	}
 
-	return 0;
+	if (benchlimit != UINT64_MAX) {
+		/* benchmark mode */
+		double el, hps;
+		int64_t el_int;
+		uint64_t n_hashes;
+
+		if (nthreads > 1) {
+			for (i = 0; i < nthreads; i++) {
+				r = pthread_join(threads[i], NULL);
+				ASSERT(r == 0);
+			}
+		}
+
+		el = elapsed(&g_bench_begin);
+		el_int = llrint(el);
+		n_hashes = t_benchlimit * nthreads;
+		hps = (double)n_hashes / el;
+
+		if (trial == 0) {
+			printf("TRIAL TIME_FLOAT TIME_INT HASHES "
+			    "HASHES_PER_THREAD HASHES_PER_SECOND\n");
+		}
+		printf("%u %f %"PRIi64" %"PRIu64" %"PRIu64" %.2f\n", trial, el,
+		    el_int, n_hashes, t_benchlimit, hps);
+		fflush(stdout);
+
+		trial++;
+		if (trial < ntrials) {
+			r = pthread_attr_destroy(&pdetached);
+			ASSERT(r == 0);
+
+			goto retrial;
+		}
+	} else {
+		/* non-benchmark mode */
+		while (true)
+			sleep(100000);
+	}
+
+	if (nthreads > 1)
+		free(threads);
+
+	return EXIT_SUCCESS;
 }

@@ -5,7 +5,7 @@ LIBFLAGS = -lcurl
 main: main.c skein.c
 	gcc -std=gnu99 -pthread -Wall -Wextra \
 		-fno-strict-aliasing -Wno-strict-aliasing \
-		-lrt \
+		-lrt -lm \
 		${EXTRAFLAGS} \
 		${OPTFLAGS} \
 		${LIBFLAGS} \

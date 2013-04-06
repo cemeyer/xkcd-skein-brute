@@ -2,7 +2,8 @@ EXTRAFLAGS =
 OPTFLAGS = -O3 -march=native -mtune=native -flto
 LIBFLAGS = -lcurl
 FLAGS = -std=gnu99 -pthread -Wall -Wextra -fno-strict-aliasing \
-		-Wno-strict-aliasing -lrt -lm ${EXTRAFLAGS} ${OPTFLAGS}
+		-Wno-strict-aliasing -lrt -lm ${EXTRAFLAGS} ${OPTFLAGS} \
+		-Wno-missing-field-initializers
 
 all: main
 

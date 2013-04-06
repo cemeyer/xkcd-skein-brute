@@ -364,7 +364,7 @@ void *
 hash_worker(void *unused)
 {
 	char string[MAX_STRING] = { 0 };
-	uint8_t loc_target_hash[1024/8];
+	uint8_t loc_target_hash[sizeof(target_bytes)];
 	uint64_t nhashes_wrap = 0, nhashes = 0, my_limit;
 	size_t str_len;
 	unsigned last_best = 4000, len;
@@ -372,7 +372,7 @@ hash_worker(void *unused)
 
 	(void)unused;
 
-	memcpy(loc_target_hash, target_bytes, sizeof(target_bytes));
+	memcpy(loc_target_hash, target_bytes, sizeof(loc_target_hash));
 	my_limit = t_benchlimit;
 
 	init_random(string, &len);

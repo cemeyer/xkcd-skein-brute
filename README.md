@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/cemeyer/xkcd-skein-brute.png?branch=master)](https://travis-ci.org/cemeyer/xkcd-skein-brute)
+
 About
 =====
 

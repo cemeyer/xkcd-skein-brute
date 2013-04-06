@@ -7,9 +7,9 @@ FLAGS = -std=gnu99 -pthread -Wall -Wextra -fno-strict-aliasing \
 all: main
 
 main: main.c skein.c
-	gcc ${FLAGS} ${LIBFLAGS} -fprofile-generate $< -o $@
+	$(CC) ${FLAGS} ${LIBFLAGS} -fprofile-generate $< -o $@
 	./main --benchmark 5000000 --trials 1 --threads 1
-	gcc ${FLAGS} ${LIBFLAGS} -fprofile-use      $< -o $@
+	$(CC) ${FLAGS} ${LIBFLAGS} -fprofile-use      $< -o $@
 
 clean:
 	rm -f main *.gcda

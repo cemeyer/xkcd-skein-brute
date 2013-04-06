@@ -31,10 +31,10 @@ Run-time options
 
     Usage: ./main [OPTIONS]
     
-      -h, --help            This help
+      -h, --help                This help
       -B, --benchmark=LIMIT     Benchmark LIMIT hashes
-      -H, --hash=HASH       Brute-force HASH (1024-bit hex string)
-                    (HASH defaults to XKCD 1193)
+      -H, --hash=HASH           Brute-force HASH (1024-bit hex string)
+                                (HASH defaults to XKCD 1193)
       -t, --trials=TRIALS       Run TRIALS in benchmark mode
       -T, --threads=THREADS     Use THREADS concurrent workers
 
@@ -74,7 +74,7 @@ Locking overhead
 ----------------
 
 As time goes on, threads should take the global lock less and less. To enable
-some lock-debugging code, build with `-DLOCK_OVERHEAD_DEBUG`.
+some lock-debugging code, build with `EXTRAFLAGS=-DLOCK_OVERHEAD_DEBUG`.
 
 For example, after a few minutes (after finding a 421-bit wrong string), we
 see:
@@ -96,5 +96,3 @@ This is somewhat suspect on a 4-core machine, so it bears future investigation.
 
 Additionally, we should poke into some of the non-default GCC optimizations and
 see if they help.
-
-Finally, we should use PGO (issue #6) during builds.

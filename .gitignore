@@ -3,3 +3,5 @@ main
 NIST/
 TAGS
 exp/
+*.gcda
+.*.swp

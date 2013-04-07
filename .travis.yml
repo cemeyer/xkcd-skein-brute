@@ -2,4 +2,12 @@ language: c
 compiler: gcc
 before_install:
   - sudo apt-get -y install libcurl4-openssl-dev libcurl3
-script: make
+
+# Test supported build configurations:
+script: >
+  make && make clean &&
+  make EXTRAFLAGS="-DHAVE_CURL=0 -DHAVE_GETOPT_LONG=0" LIBFLAGS="" && make clean &&
+  make EXTRAFLAGS="-DUNROLL_FACTOR=0" && make clean &&
+  make EXTRAFLAGS="-DUNROLL_FACTOR=1" && make clean &&
+  make EXTRAFLAGS="-DUNROLL_FACTOR=2" && make clean &&
+  make EXTRAFLAGS="-DUNROLL_FACTOR=5"

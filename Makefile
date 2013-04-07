@@ -10,7 +10,8 @@ all: main
 
 main: main.c skein.c
 	$(CC) ${MYFLAGS} -fprofile-generate $< -o $@ ${LIBS}
-	./main --benchmark 5000000 --trials 1 --threads 1
+	# --benchmark, --trials, --threads
+	./main -B 2000000 -t 1 -T 1
 	$(CC) ${MYFLAGS} -fprofile-use      $< -o $@ ${LIBS}
 
 clean:

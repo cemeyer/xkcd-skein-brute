@@ -10,4 +10,5 @@ script: >
   make EXTRAFLAGS="-DUNROLL_FACTOR=0" && make clean &&
   make EXTRAFLAGS="-DUNROLL_FACTOR=1" && make clean &&
   make EXTRAFLAGS="-DUNROLL_FACTOR=2" && make clean &&
-  make EXTRAFLAGS="-DUNROLL_FACTOR=5"
+  make EXTRAFLAGS="-DUNROLL_FACTOR=5" && make clean &&
+  make EXTRAFLAGS="-DUSE_BITHACKS=1"

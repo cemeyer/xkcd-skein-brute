@@ -67,32 +67,19 @@ Brute-force performance
 
 The best performanace profile (hashes per second) I've found on my 4-core Core
 i7-2600k is `EXTRAFLAGS="-DUNROLL_FACTOR=10"` and `OPTFLAGS="-O3 -march=native
--mtune=native"`, with only a single thread running. Both of these compile-time
-options were previously the defaults, and remain so.
+-mtune=native"`, with 4-8 threads running. Both of these compile-time options
+were previously the defaults, and remain so. And the default thread count is
+based on the number of cores your OS reports, which for me is 8. Defaults
+should be good. Ex:
 
-Locking overhead
-----------------
-
-As time goes on, threads should take the global lock less and less. To enable
-some lock-debugging code, build with `EXTRAFLAGS=-DLOCK_OVERHEAD_DEBUG`.
-
-For example, after a few minutes (after finding a 421-bit wrong string), we
-see:
-
-    Found 'KOXEI9wcSxS' with distance 421
-    lock taken 109 times (0.535 locks/sec)
-    lock taken 110 times (0.417 locks/sec)
-    lock taken 111 times (0.412 locks/sec)
-    lock taken 112 times (0.385 locks/sec)
-    lock taken 113 times (0.261 locks/sec)
-    Found 'Q1kDrQuEOf6' with distance 414
-    lock taken 113 times (0.261 locks/sec)
+    ./main --benchmark 1000000 --trials 3 --threads 4
+    TRIAL TIME_FLOAT TIME_INT HASHES HASHES_PER_THREAD HASHES_PER_SECOND
+    0 0.782700 1 4000000 1000000 5110512.88
+    1 0.774080 1 4000000 1000000 5167424.97
+    2 0.758298 1 4000000 1000000 5274968.08
 
 Future work
 -----------
 
-Single-threaded overall performance is currently better than 2 or 4 threads.
-This is somewhat suspect on a 4-core machine, so it bears future investigation.
-
-Additionally, we should poke into some of the non-default GCC optimizations and
-see if they help.
+We should poke into some of the non-default GCC optimizations and see if they
+help.

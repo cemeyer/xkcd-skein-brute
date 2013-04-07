@@ -35,6 +35,10 @@
 # define HAVE_CURL 1
 #endif
 
+#ifndef USE_BITHACKS
+# define USE_BITHACKS 0
+#endif
+
 
 #include <ctype.h>
 #include <endian.h>
@@ -166,6 +170,30 @@ ascii_incr(char *str)
 	}
 }
 
+/*
+ * Borrowed from jhiesey/skeincrack, but presumably also available in a google
+ * query for "bit-twiddling hacks"
+ */
+static const uint64_t m1  = 0x5555555555555555;
+static const uint64_t m2  = 0x3333333333333333;
+static const uint64_t m4  = 0x0f0f0f0f0f0f0f0f;
+static const uint64_t h01 = 0x0101010101010101;
+
+TRY_INLINE unsigned
+bithacks_countbits(uint64_t x)
+{
+	x -= (x >> 1) & m1;		//put count of each 2 bits into those 2 bits
+	x = (x & m2) + ((x >> 2) & m2);	//put count of each 4 bits into those 4 bits
+	x = (x + (x >> 4)) & m4;	//put count of each 8 bits into those 8 bits
+	return (x * h01)>>56;		//returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ...
+}
+
+#if USE_BITHACKS == 1
+# define COUNTBITS(exp) bithacks_countbits(exp)
+#else
+# define COUNTBITS(exp) __builtin_popcountll(exp)
+#endif
+
 TRY_INLINE unsigned
 xor_dist(uint8_t *a8, uint8_t *b8, size_t len)
 {
@@ -176,7 +204,7 @@ xor_dist(uint8_t *a8, uint8_t *b8, size_t len)
 	ASSERT(len % (sizeof *a) == 0);
 
 	while (len > 0) {
-		tot += __builtin_popcountll(*a ^ *b);
+		tot += COUNTBITS(*a ^ *b);
 		a++;
 		b++;
 		len -= sizeof(*a);

@@ -5,3 +5,4 @@ TAGS
 exp/
 *.gcda
 .*.swp
+avg.py

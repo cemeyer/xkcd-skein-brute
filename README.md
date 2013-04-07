@@ -26,6 +26,10 @@ Or, to build at a different optimization level:
 
     make OPTFLAGS=-O2
 
+To use bithacks to calculate XORs instead of GCC intrinsics, use
+`-DUSE_BITHACKS=1`. I find that the GCC intrinsics give me approximately two
+percent better performance, so the default is off.
+
 Run-time options
 ----------------
 

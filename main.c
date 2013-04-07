@@ -385,8 +385,16 @@ usage(const char *prg0)
 int
 main(int argc, char **argv)
 {
-	pthread_attr_t pdetached;
+	char target[] = "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbd"
+	    "fbae0d4c4fdf9317c80cc5fe04c6429073466cf29706b8c25999ddd2f6540d4475"
+	    "cc977b87f4757be023f19b8f4035d7722886b78869826de916a79cf9c94cc79cd4"
+	    "347d24b567aa3e2390a573a373a48a5e676640c79cc70197e1c5e7f902fb53ca18"
+	    "58b6\0";
+	uint8_t target_bytes[1024/8];
+	struct timespec start;
+	struct hash_worker_ctx hw_ctx;
 	pthread_t *threads = NULL;
+	pthread_attr_t pdetached;
 	uint64_t benchlimit = UINT64_MAX;
 #if HAVE_CURL == 1
 	CURLcode cr;
@@ -404,18 +412,6 @@ main(int argc, char **argv)
 		{ "threads", required_argument, NULL, 'T' },
 		{ 0 },
 	};
-
-	char target[] = "5b4da95f5fa08280fc9879df44f418c8f9f12ba424b7757de02bbd"
-	    "fbae0d4c4fdf9317c80cc5fe04c6429073466cf29706b8c25999ddd2f6540d4475"
-	    "cc977b87f4757be023f19b8f4035d7722886b78869826de916a79cf9c94cc79cd4"
-	    "347d24b567aa3e2390a573a373a48a5e676640c79cc70197e1c5e7f902fb53ca18"
-	    "58b6\0";
-	uint8_t target_bytes[1024/8];
-
-	struct timespec start;
-
-	struct hash_worker_ctx hw_ctx;
-
 # define _GETOPT() getopt_long(argc, argv, optstring, options, NULL)
 #else
 # define _GETOPT() getopt(argc, argv, optstring)

@@ -413,7 +413,7 @@ main(int argc, char **argv)
 	uint8_t target_bytes[1024/8];
 
 	struct timespec start;
-	
+
 	struct hash_worker_ctx hw_ctx;
 
 # define _GETOPT() getopt_long(argc, argv, optstring, options, NULL)

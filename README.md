@@ -82,6 +82,17 @@ should be good. Ex:
     1 0.774080 1 4000000 1000000 5167424.97
     2 0.758298 1 4000000 1000000 5274968.08
 
+The same benchmark (and build options) on a Xeon E3-1240 v3:
+
+    ./main --benchmark 1000000 --trials 3 --threads 4
+    TRIAL TIME_FLOAT TIME_INT HASHES HASHES_PER_THREAD HASHES_PER_SECOND
+    0 0.632235 1 4000000 1000000 6326756.84
+    1 0.614292 1 4000000 1000000 6511562.01
+    2 0.630443 1 4000000 1000000 6344740.34
+
+Or about 23% faster just going from a Sandybridge i7 to a similarly clocked
+Haswell Xeon.
+
 Future work
 -----------
 

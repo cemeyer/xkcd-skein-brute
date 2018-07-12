@@ -40,8 +40,13 @@
 #endif
 
 
+#ifdef __FreeBSD__
+#include <sys/endian.h>
+#endif
 #include <ctype.h>
+#ifdef __linux__
 #include <endian.h>
+#endif
 #include <getopt.h>
 #include <inttypes.h>
 #include <math.h>
@@ -97,7 +102,11 @@ gettime(struct timespec *t)
 {
 	int r;
 
+#ifdef __FreeBSD__
+	r = clock_gettime(CLOCK_MONOTONIC, t);
+#elif defined(__linux__)
 	r = clock_gettime(CLOCK_MONOTONIC_RAW, t);
+#endif
 	ASSERT(r == 0);
 }
 

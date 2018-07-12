@@ -79,6 +79,8 @@
 # define TRY_INLINE static inline
 #endif
 
+static unsigned default_last_best = 393;
+
 struct hash_worker_ctx {
 	uint64_t	 hash_limit;
 	uint8_t		*hash;
@@ -333,7 +335,7 @@ hash_worker(void *vctx)
 	FILE *fr;
 	uint64_t nhashes_wrap = 0, nhashes = 0, my_limit;
 	size_t str_len, tlen;
-	unsigned last_best = 393, len;
+	unsigned last_best = default_last_best, len;
 	bool overflow;
 	uint8_t *target;
 
@@ -398,12 +400,14 @@ usage(const char *prg0)
 # define BENCH_EX ", --benchmark=LIMIT\t\t"
 # define HASH_EX  ", --hash=HASH\t\t"
 # define HASH_EXX "\t\t"
+# define LASTB_EX ", --last-best=N\t\t"
 # define TRIAL_EX ", --trials=TRIALS\t\t"
 # define THRED_EX ", --threads=THREADS\t\t"
 #else
 # define HELP_EX  "\t\t"
 # define BENCH_EX " LIMIT\t"
 # define HASH_EX  " HASH\t"
+# define LASTB_EX " LAST-BEST\t"
 # define HASH_EXX ""
 # define TRIAL_EX " TRIALS\t"
 # define THRED_EX " THREADS\t"
@@ -415,6 +419,7 @@ usage(const char *prg0)
 	fprintf(stderr, "  -B" BENCH_EX "Benchmark LIMIT hashes per-thread\n");
 	fprintf(stderr, "  -H" HASH_EX  "Brute-force HASH (1024-bit hex string)\n");
 	fprintf(stderr, "\t\t" HASH_EXX "(HASH defaults to XKCD 1193)\n");
+	fprintf(stderr, "  -L" LASTB_EX "Result threshold (default 393)\n");
 	fprintf(stderr, "  -t" TRIAL_EX "Run TRIALS in benchmark mode\n");
 	fprintf(stderr, "  -T" THRED_EX "Use THREADS concurrent workers\n");
 }
@@ -439,12 +444,13 @@ main(int argc, char **argv)
 	unsigned i, trial = 0, ntrials = 3, nthreads = 0;
 	int r, opt, exit_code = EXIT_FAILURE;
 
-	const char *optstring = "hH:B:t:T:";
+	const char *optstring = "B:hH:L:t:T:";
 #if HAVE_GETOPT_LONG == 1
 	const struct option options[] = {
+		{ "benchmark", required_argument, NULL, 'B' },
 		{ "help", no_argument, NULL, 'h' },
 		{ "hash", required_argument, NULL, 'H' },
-		{ "benchmark", required_argument, NULL, 'B' },
+		{ "last-best", required_argument, NULL, 'L' },
 		{ "trials", required_argument, NULL, 't' },
 		{ "threads", required_argument, NULL, 'T' },
 		{ 0 },
@@ -468,7 +474,12 @@ main(int argc, char **argv)
 		case 'h':
 			exit_code = EXIT_SUCCESS;
 			optarg = "";
-			/* FALLTHROUGH */
+			usage(argv[0]);
+			exit(exit_code);
+			break;
+		case 'L':
+			default_last_best = atoi(optarg);
+			break;
 		case 'H':
 			if (strlen(optarg) == strlen(target)) {
 				strcpy(target, optarg);

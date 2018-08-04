@@ -69,12 +69,12 @@ incorrect. =(
 Brute-force performance
 -----------------------
 
-The best performanace profile (hashes per second) I've found on my 4-core Core
-i7-2600k is `EXTRAFLAGS="-DUNROLL_FACTOR=10"` and `OPTFLAGS="-O3 -march=native
--mtune=native"`, with 4-8 threads running. Both of these compile-time options
-were previously the defaults, and remain so. And the default thread count is
-based on the number of cores your OS reports, which for me is 8. Defaults
-should be good. Ex:
+The best performanace profile (hashes per second) I've found on my 2011 4-core
+Core i7-2600k is `EXTRAFLAGS="-DUNROLL_FACTOR=10"` and `OPTFLAGS="-O3
+-march=native -mtune=native"`, with 4-8 threads running. Both of these
+compile-time options were previously the defaults, and remain so. And the
+default thread count is based on the number of cores your OS reports, which for
+me is 8. Defaults should be good. Ex:
 
     ./main --benchmark 1000000 --trials 3 --threads 4
     TRIAL TIME_FLOAT TIME_INT HASHES HASHES_PER_THREAD HASHES_PER_SECOND
@@ -82,7 +82,7 @@ should be good. Ex:
     1 0.774080 1 4000000 1000000 5167424.97
     2 0.758298 1 4000000 1000000 5274968.08
 
-The same benchmark (and build options) on a Xeon E3-1240 v3:
+The same benchmark (and build options) on a 2013 Xeon E3-1240 v3:
 
     ./main --benchmark 1000000 --trials 3 --threads 4
     TRIAL TIME_FLOAT TIME_INT HASHES HASHES_PER_THREAD HASHES_PER_SECOND
@@ -90,8 +90,21 @@ The same benchmark (and build options) on a Xeon E3-1240 v3:
     1 0.614292 1 4000000 1000000 6511562.01
     2 0.630443 1 4000000 1000000 6344740.34
 
-Or about 23% faster just going from a Sandybridge i7 to a similarly clocked
-Haswell Xeon.
+Or about 23% faster just going from a 3.4-3.8 GHz 2011 Sandybridge i7 to
+a (similarly clocked) 3.4-3.8 GHz 2013 Haswell Xeon.
+
+Compilers and CPUs just keep getting faster and faster!  (To enable web and
+application bloat, for the most part.)  Here's my 2017 AMD TR 1950X running
+the same benchmark, restricted to the same number of threads:
+
+    ./main -B 1000000 -t 3 -T 4                                                                             ⏎
+    TRIAL TIME_FLOAT TIME_INT HASHES HASHES_PER_THREAD HASHES_PER_SECOND
+    0 0.511538 1 4000000 1000000 7819548.67
+    1 0.469354 0 4000000 1000000 8522352.60
+    2 0.469311 0 4000000 1000000 8523127.45
+
+Or another 30% faster than the Haswell Xeon with the (similarly clocked) 3.4-4.0
+Ghz 2017 AMD part.
 
 Future work
 -----------

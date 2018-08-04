@@ -243,22 +243,19 @@ hash_dist1024(const char *trial, size_t len, uint8_t *hash)
 	return xor_dist(trhash, hash, sizeof trhash);
 }
 
-/*
- * TODO: Use a PRNG that doesn't use stdio/syscalls.
- */
 TRY_INLINE void
-init_random(FILE *frand, char initvalue[MAX_STRING], unsigned *len_out)
+init_random(char initvalue[MAX_STRING], unsigned *len_out)
 {
 	const char *cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	    "abcdefghijklmnopqrstuvwxyz";
 	const unsigned cslen = strlen(cs);
 
 	uint64_t rnd[4];
-	size_t rd;
 	unsigned r, i;
+	int rc;
 
-	rd = fread(rnd, sizeof rnd[0], NELEM(rnd), frand);
-	ASSERT(rd == NELEM(rnd));
+	rc = getentropy(rnd, sizeof(rnd));
+	ASSERT(rc == 0);
 
 	i = 0;
 	for (r = 0; r < NELEM(rnd); r++) {
@@ -332,7 +329,6 @@ hash_worker(void *vctx)
 {
 	char string[MAX_STRING] = { 0 };
 	struct hash_worker_ctx *ctx = vctx;
-	FILE *fr;
 	uint64_t nhashes_wrap = 0, nhashes = 0, my_limit;
 	size_t str_len, tlen;
 	unsigned last_best = default_last_best, len;
@@ -346,10 +342,7 @@ hash_worker(void *vctx)
 	/* Skein1024-only for now */
 	ASSERT(tlen == 1024/8);
 
-	fr = fopen("/dev/urandom", "rb");
-	ASSERT(fr != NULL);
-
-	init_random(fr, string, &len);
+	init_random(string, &len);
 
 	str_len = strlen(string);
 	while (true) {
@@ -374,7 +367,7 @@ hash_worker(void *vctx)
 
 		if (nhashes_wrap > 4000000ULL) {
 			nhashes_wrap = 0;
-			init_random(fr, string, &len);
+			init_random(string, &len);
 			str_len = strlen(string);
 			continue;
 		}
@@ -387,7 +380,6 @@ hash_worker(void *vctx)
 		}
 	}
 
-	fclose(fr);
 	return NULL;
 }
 

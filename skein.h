@@ -32,6 +32,7 @@ extern "C"
 {
 #endif
 
+#include <stdbool.h>
 #include <stddef.h>                          /* get size_t definition */
 #include "skein_port.h"                      /* get platform-specific definitions */
 
@@ -96,7 +97,7 @@ int  Skein1024_Init  (Skein1024_Ctxt_t *ctx, size_t hashBitLen);
 
 int  Skein_256_Update(Skein_256_Ctxt_t *ctx, const u08b_t *msg, size_t msgByteCnt);
 int  Skein_512_Update(Skein_512_Ctxt_t *ctx, const u08b_t *msg, size_t msgByteCnt);
-int  Skein1024_Update(Skein1024_Ctxt_t *ctx, const u08b_t *msg, size_t msgByteCnt);
+int  Skein1024_Update(Skein1024_Ctxt_t *ctx, const void *msg, size_t msgByteCnt, bool flush);
 
 int  Skein_256_Final (Skein_256_Ctxt_t *ctx, u08b_t * hashVal);
 int  Skein_512_Final (Skein_512_Ctxt_t *ctx, u08b_t * hashVal);

@@ -488,7 +488,7 @@ int Skein1024_InitExt(Skein1024_Ctxt_t *ctx,size_t hashBitLen,u64b_t treeInfo, c
         ctx->h.hashBitLen=8*sizeof(ctx->X);     /* set output hash bit count = state size */
         Skein_Start_New_Type(ctx,KEY);          /* set tweaks: T0 = 0; T1 = KEY type */
         memset(ctx->X,0,sizeof(ctx->X));        /* zero the initial chaining variables */
-        Skein1024_Update(ctx,key,keyBytes);     /* hash the key */
+        Skein1024_Update(ctx,key,keyBytes,false);     /* hash the key */
         Skein1024_Final_Pad(ctx,cfg.b);         /* put result into cfg.b[] */
         memcpy(ctx->X,cfg.b,sizeof(cfg.b));     /* copy over into ctx->X[] */
 #if SKEIN_NEED_SWAP
@@ -523,14 +523,16 @@ int Skein1024_InitExt(Skein1024_Ctxt_t *ctx,size_t hashBitLen,u64b_t treeInfo, c
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 /* process the input bytes */
-int Skein1024_Update(Skein1024_Ctxt_t *ctx, const u08b_t *msg, size_t msgByteCnt)
+int Skein1024_Update(Skein1024_Ctxt_t *ctx, const void *_msg, size_t msgByteCnt, bool flush)
     {
+    const u08b_t *msg = _msg;
     size_t n;
 
     Skein_Assert(ctx->h.bCnt <= SKEIN1024_BLOCK_BYTES,SKEIN_FAIL);    /* catch uninitialized context */
 
     /* process full blocks, if any */
-    if (msgByteCnt + ctx->h.bCnt > SKEIN1024_BLOCK_BYTES)
+    if (msgByteCnt + ctx->h.bCnt > SKEIN1024_BLOCK_BYTES ||
+        (msgByteCnt + ctx->h.bCnt == SKEIN1024_BLOCK_BYTES && flush))
         {
         if (ctx->h.bCnt)                              /* finish up any buffered message data */
             {
@@ -548,9 +550,13 @@ int Skein1024_Update(Skein1024_Ctxt_t *ctx, const u08b_t *msg, size_t msgByteCnt
             ctx->h.bCnt = 0;
             }
         /* now process any remaining full blocks, directly from input message data */
-        if (msgByteCnt > SKEIN1024_BLOCK_BYTES)
+        if (msgByteCnt > SKEIN1024_BLOCK_BYTES ||
+            (msgByteCnt == SKEIN1024_BLOCK_BYTES && flush))
             {
-            n = (msgByteCnt-1) / SKEIN1024_BLOCK_BYTES;   /* number of full blocks to process */
+            if (flush)
+                n = msgByteCnt / SKEIN1024_BLOCK_BYTES;   /* number of full blocks to process */
+            else
+                n = (msgByteCnt-1) / SKEIN1024_BLOCK_BYTES;   /* number of full blocks to process */
             Skein1024_Process_Block(ctx,msg,n,SKEIN1024_BLOCK_BYTES);
             msgByteCnt -= n * SKEIN1024_BLOCK_BYTES;
             msg        += n * SKEIN1024_BLOCK_BYTES;

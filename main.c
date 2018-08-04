@@ -47,6 +47,7 @@
 #ifdef __linux__
 #include <endian.h>
 #endif
+#include <err.h>
 #include <getopt.h>
 #include <inttypes.h>
 #include <math.h>
@@ -234,7 +235,7 @@ hash_dist1024(const char *trial, size_t len, uint8_t *hash)
 	r = Skein1024_Init(&c, 1024);
 	ASSERT(r == SKEIN_SUCCESS);
 
-	r = Skein1024_Update(&c, (void*)trial, len);
+	r = Skein1024_Update(&c, (void*)trial, len, false);
 	ASSERT(r == SKEIN_SUCCESS);
 
 	r = Skein1024_Final(&c, trhash);
@@ -391,6 +392,81 @@ hash_worker(void *vctx)
 	return NULL;
 }
 
+/*
+ * Self-test for our performance optimization/
+ */
+static void
+skein_self_test(void)
+{
+	static const char iblk[SKEIN1024_BLOCK_BYTES] = "abc";
+
+	Skein1024_Ctxt_t c, c2;
+	uint8_t control[SKEIN1024_BLOCK_BYTES],
+	    expected[SKEIN1024_BLOCK_BYTES] = {
+		    0x35, 0xa5, 0x99, 0xa0, 0xf9, 0x1a, 0xbc, 0xdb, 0x4c, 0xb7, 0x3c, 0x19,
+		    0xb8, 0xcb, 0x8d, 0x94, 0x77, 0x42, 0xd8, 0x2c, 0x30, 0x91, 0x37, 0xa7,
+		    0xca, 0xed, 0x29, 0xe8, 0xe0, 0xa2, 0xca, 0x7a, 0x9f, 0xf9, 0xa9, 0x0c,
+		    0x34, 0xc1, 0x90, 0x8c, 0xc7, 0xe7, 0xfd, 0x99, 0xbb, 0x15, 0x03, 0x2f,
+		    0xb8, 0x6e, 0x76, 0xdf, 0x21, 0xb7, 0x26, 0x28, 0x39, 0x9b, 0x5f, 0x7c,
+		    0x3c, 0xc2, 0x09, 0xd7, 0xbb, 0x31, 0xc9, 0x9c, 0xd4, 0xe1, 0x94, 0x65,
+		    0x62, 0x2a, 0x04, 0x9a, 0xfb, 0xb8, 0x7c, 0x03, 0xb5, 0xce, 0x38, 0x88,
+		    0xd1, 0x7e, 0x6e, 0x66, 0x72, 0x79, 0xec, 0x0a, 0xa9, 0xb3, 0xe2, 0x71,
+		    0x26, 0x24, 0xc0, 0x1b, 0x5f, 0x5b, 0xbe, 0x1a, 0x56, 0x42, 0x20, 0xbd,
+		    0xcf, 0x69, 0x90, 0xaf, 0x0c, 0x25, 0x39, 0x01, 0x9f, 0x31, 0x3f, 0xdd,
+		    0x74, 0x06, 0xcc, 0xa3, 0x89, 0x2a, 0x1f, 0x1f
+	    },
+	    exper1[SKEIN1024_BLOCK_BYTES],
+	    exper2[SKEIN1024_BLOCK_BYTES];
+	int r;
+
+	printf("Begin Skein1024 self test\n");
+
+	/* Control case */
+	r = Skein1024_Init(&c, 1024);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Update(&c, iblk, sizeof(iblk), false);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Update(&c, iblk, 3, false);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Final(&c, control);
+	ASSERT(r == SKEIN_SUCCESS);
+
+	if (memcmp(control, expected, sizeof(expected)) == 0)
+		errx(1, "Reference abc hash fails");
+
+	printf("Reference abc hash passes.\n");
+
+	/* Experiment 1 */
+	r = Skein1024_Init(&c, 1024);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Update(&c, iblk, sizeof(iblk), true);
+	ASSERT(r == SKEIN_SUCCESS);
+
+	memcpy(&c2, &c, offsetof(Skein1024_Ctxt_t, b));
+
+	r = Skein1024_Update(&c, iblk, 3, false);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Final(&c, exper1);
+	ASSERT(r == SKEIN_SUCCESS);
+
+	if (memcmp(exper1, control, sizeof(control)) != 0)
+		errx(1, "Experiment 1 failed");
+
+	printf("Experiment 1 -- flushed intermediary block -- passes\n");
+
+	r = Skein1024_Update(&c2, iblk, 3, false);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Final(&c2, exper2);
+	ASSERT(r == SKEIN_SUCCESS);
+
+	if (memcmp(exper2, control, sizeof(control)) != 0)
+		errx(1, "Experiment 2 failed");
+
+	printf("Experiment 2 -- persisting partial context -- passes\n");
+
+	exit(0);
+}
+
 void
 usage(const char *prg0)
 {
@@ -420,6 +496,7 @@ usage(const char *prg0)
 	fprintf(stderr, "  -H" HASH_EX  "Brute-force HASH (1024-bit hex string)\n");
 	fprintf(stderr, "\t\t" HASH_EXX "(HASH defaults to XKCD 1193)\n");
 	fprintf(stderr, "  -L" LASTB_EX "Result threshold (default 393)\n");
+	fprintf(stderr, "  -S\t\t"      "Run Skein1024 self-test\n");
 	fprintf(stderr, "  -t" TRIAL_EX "Run TRIALS in benchmark mode\n");
 	fprintf(stderr, "  -T" THRED_EX "Use THREADS concurrent workers\n");
 }
@@ -444,7 +521,7 @@ main(int argc, char **argv)
 	unsigned i, trial = 0, ntrials = 3, nthreads = 0;
 	int r, opt, exit_code = EXIT_FAILURE;
 
-	const char *optstring = "B:hH:L:t:T:";
+	const char *optstring = "B:hH:L:t:T:S";
 #if HAVE_GETOPT_LONG == 1
 	const struct option options[] = {
 		{ "benchmark", required_argument, NULL, 'B' },
@@ -479,6 +556,9 @@ main(int argc, char **argv)
 			break;
 		case 'L':
 			default_last_best = atoi(optarg);
+			break;
+		case 'S':
+			skein_self_test();
 			break;
 		case 'H':
 			if (strlen(optarg) == strlen(target)) {

@@ -3,16 +3,18 @@
 About
 =====
 
-Brute-forcer for http://almamater.xkcd.com/
+One of the better CPU brute-forcers for https://beatthehash.com/ (née
+http://almamater.xkcd.com/, now defunct).
 
 The problem is basically hashing large swaths of key space to find
 near-collisions with a given bitstring. The better the 'near-ness', the higher
 your rank. It is computed by taking the bitwise distance from the hash of the
 input string to the given bitstring.
 
-An ideal solver would be an implementation of the inverse skein function. Hah.
+An ideal solver would be an implementation of the inverse skein function.
 
-See main.c.
+Interesting program sources are in `main.c`; everything else is reference
+Skein implementation.
 
 Compile-time options
 --------------------
@@ -42,6 +44,9 @@ Run-time options
       -t, --trials=TRIALS       Run TRIALS in benchmark mode
       -T, --threads=THREADS     Use THREADS concurrent workers
 
+The long form options can only be used on Linux (by default).  If your
+libc supports `getopt_long`, you can compile with `-DHAVE_GETOPT_LONG=1`
+to override that default.
 
 Skein block performance
 -----------------------

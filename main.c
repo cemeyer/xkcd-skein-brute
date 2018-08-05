@@ -403,7 +403,7 @@ hash_worker(void *vctx)
 		if (my_limit != UINT64_MAX && nhashes >= my_limit)
 			break;
 
-		if (nhashes_wrap > 4000000ULL) {
+		if (nhashes_wrap > 60ull * 1000 * 1000) {
 			nhashes_wrap = 0;
 			init_random(fr, prefix, sizeof(prefix), string,
 			    sizeof(string), &len);

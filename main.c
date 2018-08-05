@@ -84,7 +84,7 @@ static unsigned default_last_best = 393;
 
 struct hash_worker_ctx {
 	uint64_t	 hash_limit;
-	uint8_t		*hash;
+	uint64_t	*hash;
 	size_t		 hash_len;
 };
 
@@ -114,9 +114,10 @@ gettime(struct timespec *t)
 }
 
 TRY_INLINE void
-read_hex(const char *hs, uint8_t *out)
+read_hex(const char *hs, void *vout)
 {
 	size_t slen = strlen(hs);
+	uint8_t *out = vout;
 
 	ASSERT(slen % (2*sizeof(uint32_t)) == 0);
 
@@ -207,54 +208,53 @@ bithacks_countbits(uint64_t x)
 #endif
 
 TRY_INLINE unsigned
-xor_dist(uint8_t *a8, uint8_t *b8, size_t len)
+xor_dist(uint64_t a[static SKEIN1024_BLOCK_BYTES / sizeof(uint64_t)],
+    const uint64_t b[static SKEIN1024_BLOCK_BYTES / sizeof(uint64_t)])
 {
-	unsigned tot = 0;
-	uint64_t *a = (void*)a8,
-		 *b = (void*)b8;
+	unsigned i, tot = 0;
 
-	ASSERT(len % (sizeof *a) == 0);
-
-	while (len > 0) {
+	/* Wide AVX might be faster */
+	for (i = 0; i < SKEIN1024_BLOCK_BYTES; i += sizeof(*a)) {
 		tot += COUNTBITS(*a ^ *b);
 		a++;
 		b++;
-		len -= sizeof(*a);
 	}
 
 	return tot;
 }
 
 TRY_INLINE unsigned
-hash_dist1024(const char *trial, size_t len, uint8_t *hash)
+hash_dist1024(const Skein1024_Ctxt_t *ictx, const char *trial, size_t len,
+    const uint64_t *hash)
 {
-	uint8_t trhash[1024/8];
+	uint64_t trhash[SKEIN1024_BLOCK_BYTES / sizeof(uint64_t)];
 	Skein1024_Ctxt_t c;
 	int r;
 
-	r = Skein1024_Init(&c, 1024);
+	/* Copy cached prefix state */
+	memcpy(&c, ictx, offsetof(Skein1024_Ctxt_t, b));
+
+	r = Skein1024_Update(&c, trial, len, false);
 	ASSERT(r == SKEIN_SUCCESS);
 
-	r = Skein1024_Update(&c, (void*)trial, len, false);
+	r = Skein1024_Final(&c, (void *)trhash);
 	ASSERT(r == SKEIN_SUCCESS);
 
-	r = Skein1024_Final(&c, trhash);
-	ASSERT(r == SKEIN_SUCCESS);
-
-	return xor_dist(trhash, hash, sizeof trhash);
+	return xor_dist(trhash, hash);
 }
 
 /*
  * TODO: Use a PRNG that doesn't use stdio/syscalls.
  */
 TRY_INLINE void
-init_random(FILE *frand, char initvalue[MAX_STRING], unsigned *len_out)
+init_random(FILE *frand, char *prefix, size_t prefix_size, char *counter,
+    size_t ctrsize, unsigned *len_out)
 {
-	const char *cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	static const char cs[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	    "abcdefghijklmnopqrstuvwxyz";
-	const unsigned cslen = strlen(cs);
+	static const unsigned cslen = sizeof(cs) - 1;
 
-	uint64_t rnd[4];
+	uint64_t rnd[128 / 8];
 	size_t rd;
 	unsigned r, i;
 
@@ -262,20 +262,21 @@ init_random(FILE *frand, char initvalue[MAX_STRING], unsigned *len_out)
 	ASSERT(rd == NELEM(rnd));
 
 	i = 0;
-	for (r = 0; r < NELEM(rnd); r++) {
-		for (; rnd[r] > 0; i++) {
+	for (r = 0; r < NELEM(rnd) && i < prefix_size; r++) {
+		for (; rnd[r] > 0 && i < prefix_size; i++) {
 			ASSERT(i < MAX_STRING - 1);
 
-			initvalue[i] = cs[ rnd[r] % cslen ];
+			prefix[i] = cs[ rnd[r] % cslen ];
 			rnd[r] /= cslen;
 		}
 	}
 
-	ASSERT(i < MAX_STRING);
-	memset(&initvalue[i], 0, MAX_STRING - i);
+	ASSERT(i == prefix_size);
 
+	memset(counter, 0, ctrsize);
+	counter[0] = 'A';
 	if (len_out != NULL)
-		*len_out = i;
+		*len_out = 1;
 }
 
 #if HAVE_CURL == 1
@@ -328,17 +329,30 @@ retry:
 }
 #endif  /* HAVE_CURL */
 
+TRY_INLINE void
+init_ctx(Skein1024_Ctxt_t *ctx, char blk[static SKEIN1024_BLOCK_BYTES])
+{
+	int r;
+
+	r = Skein1024_Init(ctx, 1024);
+	ASSERT(r == SKEIN_SUCCESS);
+	r = Skein1024_Update(ctx, blk, SKEIN1024_BLOCK_BYTES, true);
+	ASSERT(r == SKEIN_SUCCESS);
+}
+
 static void *
 hash_worker(void *vctx)
 {
-	char string[MAX_STRING] = { 0 };
+	char prefix[128];
+	char string[MAX_STRING - 128];
+	Skein1024_Ctxt_t ictx;
 	struct hash_worker_ctx *ctx = vctx;
 	FILE *fr;
 	uint64_t nhashes_wrap = 0, nhashes = 0, my_limit;
-	size_t str_len, tlen;
+	size_t tlen;
 	unsigned last_best = default_last_best, len;
 	bool overflow;
-	uint8_t *target;
+	uint64_t *target;
 
 	my_limit = ctx->hash_limit;
 	target = ctx->hash;
@@ -350,16 +364,32 @@ hash_worker(void *vctx)
 	fr = fopen("/dev/urandom", "rb");
 	ASSERT(fr != NULL);
 
-	init_random(fr, string, &len);
+	/*
+	 * Methodology: A full skein block (1024 bits) of ASCII letters and
+	 * numbers is generated randomly.  It is fed into Skein and that
+	 * context is saved.
+	 *
+	 * A second skein block is filled with essentially a base-62 counter.
+	 *
+	 * Each step, we copy the initial saved context, update with the
+	 * counter block, and compute distance.
+	 *
+	 * EVery once in a while, we re-seed the random block.
+	 *
+	 * Workers are shared-nothing to avoid cache ping-ponging or other
+	 * inter-CPU communication overhead.
+	 */
+	init_random(fr, prefix, sizeof(prefix), string, sizeof(string), &len);
+	init_ctx(&ictx, prefix);
 
-	str_len = strlen(string);
 	while (true) {
-		unsigned hdist = hash_dist1024(string, str_len, target);
+		unsigned hdist = hash_dist1024(&ictx, string, len, target);
 
 		if (my_limit == UINT64_MAX && hdist < last_best) {
 			last_best = hdist;
 
-			printf("Found '%s' with distance %u\n", string, hdist);
+			printf("Found '%.*s%s' with distance %u\n",
+			    (int)SKEIN1024_BLOCK_BYTES, prefix, string, hdist);
 			fflush(stdout);
 
 #if HAVE_CURL == 1
@@ -375,8 +405,9 @@ hash_worker(void *vctx)
 
 		if (nhashes_wrap > 4000000ULL) {
 			nhashes_wrap = 0;
-			init_random(fr, string, &len);
-			str_len = strlen(string);
+			init_random(fr, prefix, sizeof(prefix), string,
+			    sizeof(string), &len);
+			init_ctx(&ictx, prefix);
 			continue;
 		}
 
@@ -384,7 +415,6 @@ hash_worker(void *vctx)
 		if (overflow) {
 			len++;
 			memset(string, 'A', len);
-			str_len = strlen(string);
 		}
 	}
 
@@ -509,7 +539,7 @@ main(int argc, char **argv)
 	    "cc977b87f4757be023f19b8f4035d7722886b78869826de916a79cf9c94cc79cd4"
 	    "347d24b567aa3e2390a573a373a48a5e676640c79cc70197e1c5e7f902fb53ca18"
 	    "58b6\0";
-	uint8_t target_bytes[1024/8];
+	uint64_t target_hash[SKEIN1024_BLOCK_BYTES / sizeof(uint64_t)];
 	struct timespec start;
 	struct hash_worker_ctx hw_ctx;
 	pthread_t *threads = NULL;
@@ -597,11 +627,11 @@ main(int argc, char **argv)
 		ASSERT(threads != NULL);
 	}
 
-	read_hex(target, target_bytes);
+	read_hex(target, target_hash);
 
 	hw_ctx.hash_limit = benchlimit;
-	hw_ctx.hash = target_bytes;
-	hw_ctx.hash_len = 1024/8;
+	hw_ctx.hash = target_hash;
+	hw_ctx.hash_len = SKEIN1024_BLOCK_BYTES;
 
 retrial:
 	r = pthread_attr_init(&pdetached);

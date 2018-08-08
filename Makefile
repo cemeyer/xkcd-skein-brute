@@ -9,6 +9,7 @@ MYFLAGS = -std=gnu99 -pthread -Wall -Wextra -fno-strict-aliasing \
 all: main
 
 main: main.c skein.c
+	rm -f "${@}.gcda"
 	$(CC) ${MYFLAGS} -fprofile-generate $< -o $@ ${LIBS}
 	# --benchmark, --trials, --threads
 	./main -B 2000000 -t 1 -T 1

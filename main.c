@@ -65,7 +65,7 @@
 #endif
 
 #include "skein.h"
-#if 1
+#if 0
 # define SKEIN_UNROLL_1024 UNROLL_FACTOR
 # include "skein_block.c"
 #endif

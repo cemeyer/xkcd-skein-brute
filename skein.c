@@ -595,8 +595,12 @@ int Skein1024_Final(Skein1024_Ctxt_t *ctx, u08b_t *hashVal)
     /* run Threefish in "counter mode" to generate output */
     memset(ctx->b,0,sizeof(ctx->b));  /* zero out b[], so it can hold the counter */
     memcpy(X,ctx->X,sizeof(X));       /* keep a local copy of counter mode "key" */
+#if 0
     for (i=0;i*SKEIN1024_BLOCK_BYTES < byteCnt;i++)
         {
+#else
+    i = 0;
+#endif
         ((u64b_t *)ctx->b)[0]= Skein_Swap64((u64b_t) i); /* build the counter block */
         Skein_Start_New_Type(ctx,OUT_FINAL);
         Skein1024_Process_Block(ctx,ctx->b,1,sizeof(u64b_t)); /* run "counter mode" */
@@ -606,7 +610,9 @@ int Skein1024_Final(Skein1024_Ctxt_t *ctx, u08b_t *hashVal)
         Skein_Put64_LSB_First(hashVal+i*SKEIN1024_BLOCK_BYTES,ctx->X,n);   /* "output" the ctr mode bytes */
         Skein_Show_Final(1024,&ctx->h,n,hashVal+i*SKEIN1024_BLOCK_BYTES);
         memcpy(ctx->X,X,sizeof(X));   /* restore the counter mode key for next time */
+#if 0
         }
+#endif
     return SKEIN_SUCCESS;
     }
 
